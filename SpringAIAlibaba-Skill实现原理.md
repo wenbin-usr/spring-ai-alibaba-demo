@@ -364,12 +364,12 @@ SkillDemo.main
 |---|---|---|---|
 | `pdf/SKILL.md` 全文 | 8,021（frontmatter 499 + 正文 7,511） | ≈ 2,000–2,300 | `read_skill` 时 |
 | `xlsx/SKILL.md` 全文 | 9,718（frontmatter 1,015 + 正文 8,692） | ≈ 2,400–2,800 | `read_skill` 时 |
-| 两个技能的 L1 索引（name + desc + path） | ≈ 1,700 | ≈ 430–480 | **每轮** |
+| 两个技能的 L1 索引（name + description + path） | desc 1,466 + 路径 ≈ 1,700 | ≈ 430–500 | **每轮** |
 | `DEFAULT_SYSTEM_PROMPT_TEMPLATE` | 2,456 | ≈ 600–700 | **每轮** |
 | **L1 合计** | ≈ 4,200 | ≈ 1,000–1,200 | 每轮 |
 | **两个技能全文合计** | 17,739 | ≈ 4,400–5,100 | 按需 |
 
-也就是说：**常驻成本约为全文的 20%，80% 的正文 token 被推迟到真正需要时**。技能越多、正文越长，收益越明显；但要注意两笔固定成本：
+也就是说：**常驻成本约为全文的 24%，约四分之三的正文 token 被推迟到真正需要时**。技能越多、正文越长，收益越明显；但要注意两笔固定成本：
 
 1. **模板本身**约 2.4k 字符，技能很少时它反而占大头；
 2. **description 上限 1024 字符**，50 个技能最坏情况就是 5 万字符的索引——索引不是免费的，`description` 必须写得克制。
@@ -589,6 +589,8 @@ but you only read the full instructions when needed:
 ```
 
 模板全文见 [`FileSystemSkillRegistry.DEFAULT_SYSTEM_PROMPT_TEMPLATE`](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L75)。这段提示词承担了"路由"职责：它告诉模型**什么时候该读、用哪个工具读、附件怎么找**，但没有强制力。
+
+> **实测对照**：一次真实运行注入的 system prompt 逐段都能对上这份模板（见[附录 C](#附录-c实测-system-prompt-逐段对照)）。两个值得注意的点：① 技能列表顺序是 `HashMap` 迭代序（实测 xlsx 在 pdf 前，与目录顺序无关）；② `SkillDemo` 未设 `systemPrompt`/`instruction`，所以这段就是**完整**的 system message。
 
 ### 4.3 L2：正文按需（`read_skill`）
 
@@ -820,6 +822,13 @@ public String skillName;
 
 模板里也有类似表述（"shows the exact skill id to use with `read_skill`"）。三个说法（path / id / name）不一致。模型如果把 `D:\...\skills\pdf` 当作 `skill_name` 传进来，就会得到 `Error: Skill not found: D:\...`。
 
+实测注入的提示词把这一点暴露得更明显：
+
+- 一处说"调用 `read_skill` 读取 SKILL.md 文件时，请使用所显示的**精确路径**"；
+- 另一处说"上面的技能列表显示了每个 SKILL.md 文件的**完整路径**"。
+
+但列表里实际显示的是**技能目录**（`D:\...\skills\pdf`），而 `read_skill` 的入参是 **name**（`pdf`）。这是在 Windows 上最容易复现的失败模式。
+
 **规避**：自定义 `systemPromptTemplate` 或覆盖 `getSkillLoadInstructions()`，统一成"传 name，path 只用于附件"。
 
 ### 6.2 渐进式省 token，但全文一直在内存里
@@ -892,6 +901,14 @@ int endIndex = content.indexOf("---", 3);
 - 附件脚本由外部工具执行，框架**不做沙箱、不做审批**。若同时挂了 Shell 工具，技能里的脚本就具备与 Agent 相同的执行权限。
 - `SkillScanner` 用默认 `Yaml` 构造器（未限制 tag/类），对不受信任的 YAML 存在反序列化风险；生产环境应只扫描可信目录，或改用 `SafeConstructor`。
 
+### 6.15 模板里硬编码了并不存在的 `web-research` 示例
+
+默认模板的"何时使用技能"和"示例工作流"两段，写的是 `web-research` 技能和"量子计算研究"的例子（[107](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L107)、[122-127](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L122)）。本仓库只有 `pdf`/`xlsx`，这两个示例是纯噪声，可能让模型去找一个不存在的技能。自定义模板时应删掉。
+
+### 6.16 技能列表顺序不稳定
+
+`AbstractSkillRegistry.listAll()` 返回 `new ArrayList<>(skills.values())`（[51](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/AbstractSkillRegistry.java#L51)），底层是 `HashMap`，迭代序由 key 的 hash 决定。实测 prompt 中 xlsx 排在 pdf 前，与该目录的创建顺序无关。若你依赖"第一个技能优先被看到"之类的效果，需要自己改成 `LinkedHashMap` 或对 `listAll()` 排序。
+
 ---
 
 ## 7. 扩展与改造
@@ -942,6 +959,31 @@ FileSystemSkillRegistry registry = FileSystemSkillRegistry.builder()
 ```
 
 变量只有 `skills_list` 与 `skills_load_instructions` 两个（`{skills_registry}` 在 javadoc 里提到，但 `buildSkillsPrompt` **从未放入 context**，模板里写它会渲染失败/原样保留，视渲染器而定）。
+
+一个**修正了 name/path 歧义**的中文模板（可直接替换默认模板）：
+
+```java
+SystemPromptTemplate tpl = SystemPromptTemplate.builder()
+    .template("""
+        ## 技能系统
+
+        你可以使用下列技能。每个技能由 name 唯一标识，description 说明适用场景。
+
+        ### 可用技能
+        {skills_list}
+
+        ### 使用方式（渐进式披露）
+        1. 先根据 description 判断技能是否适用；
+        2. 需要完整步骤时调用 `read_skill`，参数 `skill_name` 必须是技能名（如 `pdf`），**不是目录路径**；
+        3. 技能目录下的脚本/参考资料用绝对路径访问（目录见每条技能后面的说明）。
+
+        ### 加载说明
+        {skills_load_instructions}
+        """)
+    .build();
+```
+
+要点：明确"参数是 name、路径只用于附件"；删掉默认模板里不存在的 `web-research` 示例；不再声称"列表显示 SKILL.md 的完整路径"。
 
 ### 7.3 只给某些技能挂工具
 
@@ -1057,3 +1099,47 @@ mvn -q compile exec:java -Dexec.mainClass=edu.whpu.SkillDemo
 - `SkillPromptConstants` 与 `SpringAiSkillAdvisor` 中的 `buildSkillsPrompt` 是**两份近似重复实现**，提示语不同（前者给目录路径，后者要求"MUST use read_skill"）；
 - `SkillPromptAugmentAdvisor` 与 `SpringAiSkillAdvisor` 也是近似重复的两个 Advisor；
 - 后续版本可能把 Advisor 路径补上 `read_skill` 工具注册，或统一提示词中的 name/path 表述。
+
+---
+
+## 附录 C：实测 system prompt 逐段对照
+
+你提供的那段中文 prompt 就是默认模板的中文译本（1.1.2.0 的 `DEFAULT_SYSTEM_PROMPT_TEMPLATE` 本身是英文），段落与本模板一一对应。
+
+### C.1 逐段来源
+
+| prompt 段落 | 生成位置 |
+|---|---|
+| "## 技能系统" / "所有技能都存储在基于文件系统的技能注册表中" | 模板 [77-79](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L77) |
+| "### 可用技能" + `{skills_list}` | 模板 [81-83](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L81)；内容由 [SkillPromptConstants 41-76](sources/graph-core/com/alibaba/cloud/ai/graph/skills/SkillPromptConstants.java#L41) 生成 |
+| "**项目技能**：" 小标题 | [SkillPromptConstants:63-65](sources/graph-core/com/alibaba/cloud/ai/graph/skills/SkillPromptConstants.java#L63)（user / project 分组，project 在后） |
+| 每条 `- **name**: description` | [SkillPromptConstants:66](sources/graph-core/com/alibaba/cloud/ai/graph/skills/SkillPromptConstants.java#L66)，description 来自 frontmatter（上限 1024） |
+| 每条 `→ ... 位于目录 ...` | [SkillPromptConstants:67](sources/graph-core/com/alibaba/cloud/ai/graph/skills/SkillPromptConstants.java#L67)，路径来自 `SkillMetadata.skillPath` |
+| "### 如何使用技能（渐进式披露）" 4 步 | 模板 [85-92](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L85) |
+| "#### 如何阅读完整技能说明" + `{skills_load_instructions}` | 模板 [94-98](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L94) |
+| "**技能位置**：项目技能：`D:\...\skills`" | [FileSystemSkillRegistry:264-274](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L264)；只有存在该组技能时才打印该目录 |
+| "**技能路径格式**：... 精确路径" | [FileSystemSkillRegistry:276-279](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L276) |
+| "**重要**：SKILL.md 用 read_skill；其它支持文件用其它工具" | 模板 [100-103](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L100) |
+| "#### 何时使用技能" | 模板 [105-109](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L105) |
+| "#### 技能是自文档化的" / "显示完整路径" | 模板 [111-115](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L111) |
+| "#### 执行技能脚本" | 模板 [116-119](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L116) |
+| "### 示例工作流"（量子计算 / web-research） | 模板 [120-128](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L120) |
+| "记住：技能是..." | 模板 [129](sources/graph-core/com/alibaba/cloud/ai/graph/skills/registry/filesystem/FileSystemSkillRegistry.java#L129) |
+
+### C.2 这次实测暴露的 6 个事实
+
+1. **只有 Project Skills，没有 User Skills**：`~/saa/skills` 不存在或为空，`buildSkillsPrompt` 的 user 分组为空；`getSkillLoadInstructions()` 也只在某组有技能时才打印对应目录。
+2. **顺序是 xlsx → pdf**：`HashMap` 迭代序，与目录顺序、创建时间无关（见 6.16）。
+3. **这段就是完整 system message**：本项目 `SkillDemo` 没有 `systemPrompt`/`instruction`，`SkillsInterceptor` 的 `enhanceSystemMessage(null, ...)` 直接 `new SystemMessage(skillsSection)`（[SkillsInterceptor:210](sources/agent-framework/com/alibaba/cloud/ai/graph/agent/interceptor/skills/SkillsInterceptor.java#L210)）；用户任务是 user message，不是 system。
+4. **"路径"歧义被坐实**：prompt 两处要求用"精确路径"调 `read_skill`，而工具 schema 只有 `skill_name`（见 6.1）。
+5. **模板混入了与本仓库无关的 `web-research` 示例**，对 pdf/xlsx 场景是干扰（见 6.15）。
+6. **xlsx 的 description 已达 990 字符**（pdf 476），接近 1024 截断线；仅两条 description 就 1,466 字符 ≈ 400 tokens。索引本身并不便宜，技能一多必须克制 description 长度。
+
+### C.3 如果你看到的是中文
+
+1.1.2.0 的默认模板是英文。运行时若看到中文版本，只有两种可能：
+
+- 你（或你们的框架封装）通过 `systemPromptTemplate(...)` 传了自定义中文模板；
+- 这段是默认英文模板的人工/机器翻译。
+
+要拿到未经翻译的真实 prompt，把 `com.alibaba.cloud.ai.graph.agent.interceptor.skills` 的日志级别设为 `DEBUG`（`SkillsInterceptor` 会打印 enhanced system message），或在 `interceptModel` 里断点看 `enhanced.getText()`。
