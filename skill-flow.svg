@@ -1,0 +1,270 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1720" viewBox="0 0 1500 1720" font-family="'Microsoft YaHei','PingFang SC','Noto Sans SC',sans-serif">
+  <title>Spring AI Alibaba Skill 实现原理总览</title>
+  <desc>Skill 的加载、装配、渐进式披露与 read_skill 调用链</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2f6feb"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0f766e"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1500" height="1720" fill="#f7f9fc"/>
+
+  <!-- ===================== 标题 ===================== -->
+  <text x="60" y="52" font-size="26" font-weight="700" fill="#0f172a">Spring AI Alibaba Skill 实现原理：加载 · 渐进式披露 · 调用</text>
+  <text x="60" y="80" font-size="13" fill="#475569">源码版本：spring-ai-alibaba-agent-framework 1.1.2.0 + spring-ai-alibaba-graph-core 1.1.2.0　｜　路径：ReactAgent + SkillsAgentHook</text>
+  <text x="1010" y="80" font-size="11" fill="#64748b">蓝＝加载　紫＝装配　绿＝运行　橙＝按需</text>
+
+  <!-- ===================== ① 加载 ===================== -->
+  <rect x="40" y="104" width="1420" height="270" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+  <rect x="56" y="116" width="330" height="30" rx="15" fill="#2f6feb"/>
+  <text x="72" y="136" font-size="14" font-weight="700" fill="#ffffff">① 加载：目录 → SkillRegistry</text>
+
+  <g>
+    <rect x="60" y="170" width="280" height="130" rx="10" fill="#eaf1ff" stroke="#2f6feb" stroke-width="1.2"/>
+    <text x="76" y="196" font-size="14" font-weight="700" fill="#1e3a8a">skills/（项目级技能目录）</text>
+    <text x="76" y="222" font-size="12" fill="#1f2937">skills/pdf/、skills/xlsx/</text>
+    <text x="76" y="242" font-size="12" fill="#1f2937">每个技能 = 一个一级子目录</text>
+    <text x="76" y="262" font-size="12" fill="#1f2937">必须含 SKILL.md（YAML + 正文）</text>
+    <text x="76" y="282" font-size="12" fill="#1f2937">可带 REFERENCE.md / scripts/</text>
+  </g>
+
+  <g>
+    <rect x="380" y="170" width="300" height="130" rx="10" fill="#eaf1ff" stroke="#2f6feb" stroke-width="1.2"/>
+    <text x="396" y="196" font-size="14" font-weight="700" fill="#1e3a8a">SkillScanner.scan(dir, source)</text>
+    <text x="396" y="222" font-size="12" fill="#1f2937">Files.list() → 只看一级子目录</text>
+    <text x="396" y="242" font-size="12" fill="#1f2937">无 SKILL.md → 跳过该目录</text>
+    <text x="396" y="262" font-size="12" fill="#1f2937">name / description 缺失 → 跳过</text>
+    <text x="396" y="282" font-size="12" fill="#1f2937">单目录异常只记日志，不中断</text>
+  </g>
+
+  <g>
+    <rect x="720" y="170" width="330" height="130" rx="10" fill="#eaf1ff" stroke="#2f6feb" stroke-width="1.2"/>
+    <text x="736" y="196" font-size="14" font-weight="700" fill="#1e3a8a">解析 frontmatter（SnakeYAML）</text>
+    <text x="736" y="222" font-size="12" fill="#1f2937">name ≤64；desc ≤1024（截断）</text>
+    <text x="736" y="242" font-size="12" fill="#1f2937">命名不合规只告警，仍然加载</text>
+    <text x="736" y="262" font-size="12" fill="#1f2937">removeFrontmatter → 正文入内存</text>
+    <text x="736" y="282" font-size="12" fill="#1f2937">（这正是「省 token 不省 IO」）</text>
+  </g>
+
+  <g>
+    <rect x="1090" y="170" width="350" height="130" rx="10" fill="#eaf1ff" stroke="#2f6feb" stroke-width="1.2"/>
+    <text x="1106" y="196" font-size="14" font-weight="700" fill="#1e3a8a">FileSystemSkillRegistry</text>
+    <text x="1106" y="222" font-size="12" fill="#1f2937">user    ：~/saa/skills　source=user</text>
+    <text x="1106" y="242" font-size="12" fill="#1f2937">project：./skills　　　source=project</text>
+    <text x="1106" y="262" font-size="12" fill="#1f2937">同名技能：project 覆盖 user</text>
+    <text x="1106" y="282" font-size="12" fill="#1f2937">volatile Map(name → SkillMetadata)</text>
+  </g>
+
+  <path d="M340,235 L378,235" stroke="#2f6feb" stroke-width="1.6" marker-end="url(#arrowBlue)"/>
+  <path d="M680,235 L718,235" stroke="#2f6feb" stroke-width="1.6" marker-end="url(#arrowBlue)"/>
+  <path d="M1050,235 L1088,235" stroke="#2f6feb" stroke-width="1.6" marker-end="url(#arrowBlue)"/>
+
+  <text x="60" y="336" font-size="12" fill="#475569">autoLoad=true：在构造器里同步扫描；reload() 重新扫描（synchronized，整体替换 Map）。</text>
+  <text x="60" y="358" font-size="12" fill="#475569">ClasspathSkillRegistry：处理 jar: 协议，把技能资源复制到 /tmp，并缓存 JAR 内的正文文本。</text>
+
+  <!-- ===================== ② 装配 ===================== -->
+  <rect x="40" y="392" width="1420" height="308" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+  <rect x="56" y="404" width="500" height="30" rx="15" fill="#7c3aed"/>
+  <text x="72" y="424" font-size="14" font-weight="700" fill="#ffffff">② 装配：Hook 同时产出「拦截器 + read_skill 工具」</text>
+
+  <g>
+    <rect x="60" y="442" width="300" height="176" rx="10" fill="#f3ecff" stroke="#7c3aed" stroke-width="1.2"/>
+    <text x="76" y="468" font-size="14" font-weight="700" fill="#5b21b6">SkillsAgentHook</text>
+    <text x="76" y="492" font-size="12" fill="#1f2937">@HookPositions(BEFORE_AGENT)</text>
+    <text x="76" y="512" font-size="12" fill="#1f2937">必须传入同一个 SkillRegistry</text>
+    <text x="76" y="532" font-size="12" fill="#1f2937">构造时创建 read_skill 工具</text>
+    <text x="76" y="552" font-size="12" fill="#1f2937">getTools() → [read_skill]</text>
+    <text x="76" y="572" font-size="12" fill="#1f2937">getModelInterceptors() → 拦截器</text>
+    <text x="76" y="592" font-size="12" fill="#1f2937">beforeAgent()：autoReload 时 reload</text>
+  </g>
+
+  <g>
+    <rect x="420" y="442" width="380" height="176" rx="10" fill="#f3ecff" stroke="#7c3aed" stroke-width="1.2"/>
+    <text x="436" y="468" font-size="14" font-weight="700" fill="#5b21b6">ReactAgent 构造：拦截器合并</text>
+    <text x="436" y="492" font-size="12" fill="#1f2937">collectAndMergeModelInterceptors()</text>
+    <text x="436" y="512" font-size="12" fill="#1f2937">先放 Agent 显式配置的拦截器（优先）</text>
+    <text x="436" y="532" font-size="12" fill="#1f2937">再收集 hook.getModelInterceptors()</text>
+    <text x="436" y="552" font-size="12" fill="#1f2937">按 name 去重：同名跳过并记日志</text>
+    <text x="436" y="572" font-size="12" fill="#1f2937">llmNode.setModelInterceptors(merged)</text>
+  </g>
+
+  <g>
+    <rect x="860" y="442" width="540" height="176" rx="10" fill="#f3ecff" stroke="#7c3aed" stroke-width="1.2"/>
+    <text x="876" y="468" font-size="14" font-weight="700" fill="#5b21b6">DefaultBuilder.gatherLocalTools() + initGraph()</text>
+    <text x="876" y="492" font-size="12" fill="#1f2937">allTools = hookTools(read_skill) + interceptorTools + regularTools</text>
+    <text x="876" y="512" font-size="12" fill="#1f2937">同一份 allTools 同时给 llmNode.chatOptions 与 toolNode.toolCallbacks</text>
+    <text x="876" y="532" font-size="12" fill="#1f2937">hasTools = true → 图里一定出现 tools 节点</text>
+    <text x="876" y="552" font-size="12" fill="#1f2937">before 节点 = agent.hook.SkillsAgentHook.before（entry）</text>
+    <text x="876" y="572" font-size="12" fill="#1f2937">拓扑：START → hook.before → model ↔ tools → END</text>
+  </g>
+
+  <path d="M360,530 L418,530" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#arrowPurple)"/>
+  <path d="M800,530 L858,530" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#arrowPurple)"/>
+
+  <text x="60" y="646" font-size="12" fill="#475569">Hook 只负责「工具 + 拦截器」；before 节点几乎是空操作，只为 autoReload 而存在。</text>
+  <text x="60" y="668" font-size="12" fill="#475569">同名拦截器去重：手工把 SkillsInterceptor 加进 builder 时，Hook 产出的那个会被丢弃。</text>
+
+  <!-- ===================== ③ 运行 ===================== -->
+  <rect x="40" y="718" width="1420" height="852" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+  <rect x="56" y="730" width="620" height="30" rx="15" fill="#0f766e"/>
+  <text x="72" y="750" font-size="14" font-weight="700" fill="#ffffff">③ 运行：一次 call() 的完整链路（渐进式披露在这里发生）</text>
+
+  <!-- 入口 -->
+  <g>
+    <rect x="60" y="790" width="280" height="52" rx="8" fill="#e6f7f5" stroke="#0f766e" stroke-width="1.2"/>
+    <text x="76" y="822" font-size="13" fill="#0f172a">agent.call("帮我生成一个pdf文件")</text>
+  </g>
+  <g>
+    <rect x="60" y="856" width="280" height="52" rx="8" fill="#e6f7f5" stroke="#0f766e" stroke-width="1.2"/>
+    <text x="76" y="888" font-size="13" fill="#0f172a">CompiledGraph.invoke → START</text>
+  </g>
+  <g>
+    <rect x="60" y="926" width="280" height="96" rx="8" fill="#e6f7f5" stroke="#0f766e" stroke-width="1.2"/>
+    <text x="76" y="950" font-size="13" font-weight="700" fill="#115e59">SkillsAgentHook.beforeAgent()</text>
+    <text x="76" y="974" font-size="12" fill="#1f2937">autoReload=true 时 registry.reload()</text>
+    <text x="76" y="996" font-size="12" fill="#1f2937">返回空 Map：不改 state，只做副作用</text>
+  </g>
+
+  <path d="M200,842 L200,854" stroke="#0f766e" stroke-width="1.6" marker-end="url(#arrowGreen)"/>
+  <path d="M200,908 L200,924" stroke="#0f766e" stroke-width="1.6" marker-end="url(#arrowGreen)"/>
+  <path d="M340,974 L352,974 L352,812 L390,812" stroke="#0f766e" stroke-width="1.6" marker-end="url(#arrowGreen)"/>
+
+  <!-- 循环容器 -->
+  <rect x="360" y="744" width="600" height="806" rx="12" fill="#fcfefd" stroke="#0f766e" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <text x="376" y="768" font-size="13" font-weight="700" fill="#0f766e">ReAct 循环：每轮 model 调用都会经过拦截器</text>
+  <text x="376" y="786" font-size="11" fill="#64748b">START → hook.before → model → (tools → model)* → END</text>
+
+  <g>
+    <rect x="392" y="792" width="536" height="64" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="1.2"/>
+    <text x="408" y="818" font-size="13" font-weight="700" fill="#115e59">AgentLlmNode.apply()：构造 ModelRequest</text>
+    <text x="408" y="842" font-size="11.5" fill="#1f2937">messages / systemMessage / options(toolCallbacks) / tools(名称) / context</text>
+  </g>
+
+  <g>
+    <rect x="392" y="872" width="536" height="112" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.4"/>
+    <text x="408" y="898" font-size="13" font-weight="700" fill="#92400e">SkillsInterceptor.interceptModel()</text>
+    <text x="408" y="922" font-size="11.5" fill="#1f2937">① buildSkillsPrompt()：只渲染 name + description + path</text>
+    <text x="408" y="942" font-size="11.5" fill="#1f2937">② enhanceSystemMessage()：追加到 system message 末尾</text>
+    <text x="408" y="962" font-size="11.5" fill="#1f2937">③ 扫历史里的 read_skill(name) → 追加该技能的工具</text>
+  </g>
+
+  <g>
+    <rect x="392" y="1006" width="536" height="56" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="1.2"/>
+    <text x="408" y="1032" font-size="13" font-weight="700" fill="#115e59">ChatClient → LLM：system + 全部历史 + 工具 JSON Schema</text>
+    <text x="408" y="1052" font-size="11" fill="#64748b">internalToolExecution=false：工具由框架执行，不是模型内部执行</text>
+  </g>
+
+  <path d="M660,856 L660,870" stroke="#0f766e" stroke-width="1.6" marker-end="url(#arrowGreen)"/>
+  <path d="M660,984 L660,1004" stroke="#0f766e" stroke-width="1.6" marker-end="url(#arrowGreen)"/>
+  <path d="M660,1062 L660,1084" stroke="#0f766e" stroke-width="1.6" marker-end="url(#arrowGreen)"/>
+
+  <!-- 判断 -->
+  <polygon points="660,1087 810,1150 660,1213 510,1150" fill="#fff7e6" stroke="#d97706" stroke-width="1.4"/>
+  <text x="660" y="1146" font-size="13" font-weight="700" fill="#92400e" text-anchor="middle">有 tool_calls？</text>
+  <text x="660" y="1166" font-size="11" fill="#78350f" text-anchor="middle">（read_skill / 其它工具）</text>
+
+  <path d="M810,1150 L822,1150" stroke="#d97706" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="816" y="1140" font-size="11" fill="#92400e" text-anchor="end">否</text>
+
+  <g>
+    <rect x="824" y="1122" width="110" height="56" rx="8" fill="#f1f5f9" stroke="#64748b" stroke-width="1.2"/>
+    <text x="879" y="1146" font-size="13" font-weight="700" fill="#334155" text-anchor="middle">END</text>
+    <text x="879" y="1166" font-size="11" fill="#475569" text-anchor="middle">返回最后消息</text>
+  </g>
+
+  <path d="M660,1213 L660,1236" stroke="#0f766e" stroke-width="1.6" marker-end="url(#arrowGreen)"/>
+  <text x="670" y="1229" font-size="11" fill="#0f766e">是</text>
+
+  <g>
+    <rect x="392" y="1240" width="536" height="104" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="1.2"/>
+    <text x="408" y="1266" font-size="13" font-weight="700" fill="#115e59">AgentToolNode：resolve(toolName)</text>
+    <text x="408" y="1290" font-size="11.5" fill="#1f2937">① 静态 toolCallbacks（含 hook 提供的 read_skill）</text>
+    <text x="408" y="1310" font-size="11.5" fill="#1f2937">② config.context 里的 dynamicToolCallbacks（groupedTools）</text>
+    <text x="408" y="1330" font-size="11.5" fill="#1f2937">③ ToolCallbackResolver（MCP 等）</text>
+  </g>
+
+  <g>
+    <rect x="392" y="1370" width="536" height="78" rx="8" fill="#e6f7f5" stroke="#0f766e" stroke-width="1.2"/>
+    <text x="408" y="1396" font-size="13" font-weight="700" fill="#115e59">ReadSkillTool.apply()（FunctionToolCallback）</text>
+    <text x="408" y="1420" font-size="11.5" fill="#1f2937">registry.readSkillContent(name) → loadFullContent() 命中缓存</text>
+    <text x="408" y="1440" font-size="11.5" fill="#1f2937">返回去掉 frontmatter 的 SKILL.md 正文（纯文本）</text>
+  </g>
+
+  <g>
+    <rect x="392" y="1472" width="536" height="56" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="1.2"/>
+    <text x="408" y="1498" font-size="13" font-weight="700" fill="#115e59">ToolResponseMessage 追加进 messages（AppendStrategy）</text>
+    <text x="408" y="1518" font-size="11" fill="#64748b">下一轮模型请求里已经包含全文，后续轮次持续可见</text>
+  </g>
+
+  <path d="M660,1344 L660,1368" stroke="#0f766e" stroke-width="1.6" marker-end="url(#arrowGreen)"/>
+  <path d="M660,1448 L660,1470" stroke="#0f766e" stroke-width="1.6" marker-end="url(#arrowGreen)"/>
+
+  <!-- 回边 -->
+  <path d="M928,1500 L944,1500 L944,932 L930,932" stroke="#0f766e" stroke-width="1.6" marker-end="url(#arrowGreen)" stroke-dasharray="5 3"/>
+
+  <text x="392" y="1544" font-size="11" fill="#0f766e">↺ 回到 model：本轮读完的正文已经进入消息历史，模型可继续按技能步骤执行</text>
+
+  <!-- ===================== 渐进式披露面板 ===================== -->
+  <rect x="1006" y="744" width="464" height="806" rx="12" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="1026" y="772" font-size="14" font-weight="700" fill="#334155">渐进式披露：三层 + 一层可选</text>
+  <text x="1026" y="790" font-size="11" fill="#64748b">越往下，token 成本越高，触发条件越具体</text>
+
+  <g>
+    <rect x="1016" y="800" width="444" height="170" rx="8" fill="#eaf1ff" stroke="#2f6feb" stroke-width="1.2"/>
+    <text x="1032" y="826" font-size="13.5" font-weight="700" fill="#1e3a8a">L1 · 索引（常驻 system prompt）</text>
+    <text x="1032" y="850" font-size="11.5" fill="#1f2937">每个技能：name + description + skillPath</text>
+    <text x="1032" y="870" font-size="11.5" fill="#1f2937">本 demo：pdf 499 + xlsx 1,015 字符 ≈ 480 tokens</text>
+    <text x="1032" y="890" font-size="11.5" fill="#1f2937">两个 SKILL.md 全文 17,739 字符 ≈ 5,000 tokens</text>
+    <text x="1032" y="910" font-size="11.5" fill="#1f2937">常驻模板 2,456 字符 ≈ 700 tokens（固定成本）</text>
+    <text x="1032" y="930" font-size="11.5" fill="#1f2937">净效果：约 80% 的正文 token 被推迟</text>
+    <text x="1032" y="952" font-size="11" fill="#64748b">触发依据：description 与任务的语义匹配</text>
+  </g>
+
+  <g>
+    <rect x="1016" y="984" width="444" height="166" rx="8" fill="#fff7e6" stroke="#d97706" stroke-width="1.3"/>
+    <text x="1032" y="1010" font-size="13.5" font-weight="700" fill="#92400e">L2 · 正文（按需，read_skill）</text>
+    <text x="1032" y="1034" font-size="11.5" fill="#1f2937">返回 SKILL.md 去掉 frontmatter 的正文</text>
+    <text x="1032" y="1054" font-size="11.5" fill="#1f2937">pdf 正文 7,511 字符 / xlsx 正文 8,692 字符</text>
+    <text x="1032" y="1074" font-size="11.5" fill="#1f2937">多个技能可叠加读取，按任务需要</text>
+    <text x="1032" y="1094" font-size="11.5" fill="#1f2937">写入消息历史后，后续每轮都可复用</text>
+  </g>
+
+  <g>
+    <rect x="1016" y="1164" width="444" height="176" rx="8" fill="#e6f7f5" stroke="#0f766e" stroke-width="1.3"/>
+    <text x="1032" y="1190" font-size="13.5" font-weight="700" fill="#115e59">L3 · 附件（按需，其它工具）</text>
+    <text x="1032" y="1214" font-size="11.5" fill="#1f2937">REFERENCE.md / FORMS.md / scripts/*.py</text>
+    <text x="1032" y="1234" font-size="11.5" fill="#1f2937">框架只给 skillPath，不注入附件内容</text>
+    <text x="1032" y="1254" font-size="11.5" fill="#1f2937">由 shell / filesystem / MCP 工具按绝对路径操作</text>
+    <text x="1032" y="1274" font-size="11.5" fill="#1f2937">本 demo 未提供此类工具 → 只能读说明</text>
+    <text x="1032" y="1294" font-size="11.5" fill="#1f2937">（这也是 demo 无法真正生成 PDF 的原因）</text>
+  </g>
+
+  <g>
+    <rect x="1016" y="1354" width="444" height="166" rx="8" fill="#f3ecff" stroke="#7c3aed" stroke-width="1.3"/>
+    <text x="1032" y="1380" font-size="13.5" font-weight="700" fill="#5b21b6">L3' · 工具（可选，groupedTools）</text>
+    <text x="1032" y="1404" font-size="11.5" fill="#1f2937">skill 名 → 该技能的专属 ToolCallback</text>
+    <text x="1032" y="1424" font-size="11.5" fill="#1f2937">历史出现 read_skill(name) 调用后</text>
+    <text x="1032" y="1444" font-size="11.5" fill="#1f2937">下一次 model 请求才注入 dynamicToolCallbacks</text>
+    <text x="1032" y="1464" font-size="11.5" fill="#1f2937">未读过的技能，其工具对模型不可见</text>
+  </g>
+
+  <path d="M1238,970 L1238,982" stroke="#475569" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <path d="M1238,1150 L1238,1162" stroke="#475569" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <path d="M1238,1340 L1238,1352" stroke="#475569" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <!-- ===================== 结论 ===================== -->
+  <rect x="40" y="1590" width="1420" height="100" rx="12" fill="#0f172a"/>
+  <text x="64" y="1626" font-size="15" font-weight="700" fill="#ffffff">结论：渐进式加载优化的是「上下文 token」，不是磁盘 IO。</text>
+  <text x="64" y="1654" font-size="12.5" fill="#cbd5e1">SkillScanner 扫描时已把每个 SKILL.md 全文读进内存（fullContent）；read_skill 决定的只是「这段文本何时进入 prompt」。</text>
+  <text x="64" y="1674" font-size="12.5" fill="#cbd5e1">第二个渐进维度是工具：groupedTools 让技能专属工具也随 read_skill 调用一起出现。</text>
+</svg>
