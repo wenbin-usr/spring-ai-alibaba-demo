@@ -1091,6 +1091,7 @@ shell("python -c ...检查文件大小...")             → 自检，失败会�
 | `read_skill` 报 not found | 模型是否传了路径而不是 name（见 6.1） |
 | 读完技能仍然不会做 | 是否缺附件读取/执行工具（L3）；本项目已用内置 `FileSystemTools` + `ShellTool2` 补齐，见 7.5 |
 | 改了 SKILL.md 不生效 | `autoLoad` 只在构造时扫描；`autoReload` 默认 false；需要手动 `registry.reload()` |
+| 模型不是预期（实际是 qwen-plus） | `DashScopeChatModel.builder()` 未设 `defaultOptions`；Builder 默认 `model = DashScopeApi.DEFAULT_CHAT_MODEL = qwen-plus`，用 `.defaultOptions(DashScopeChatOptions.builder().model("qwen-max").build())` 覆盖 |
 | 想看真实注入的 prompt | `logging.level.com.alibaba.cloud.ai.graph.agent.interceptor.skills=DEBUG`（`SkillsInterceptor` 会打印 enhanced system message），或在 `interceptModel` 打断点 |
 
 单测 Registry 的最小方式：
@@ -1153,7 +1154,7 @@ jar tf $env:USERPROFILE\.m2\repository\com\alibaba\cloud\ai\spring-ai-alibaba-ag
 
 # 2) 解压（本文已解压并裁剪到 sources/）
 # 3) 运行 demo（需要 JDK 17 + DASHSCOPE_API_KEY，且工作目录必须是项目根）
-mvn -q compile exec:java -Dexec.mainClass=edu.whpu.SkillDemo
+mvn -q compile exec:java -Dexec.mainClass=edu.whpu.SkillDemo1
 ```
 
 ---
