@@ -4,7 +4,7 @@
 >
 > **源码来源**：本地 Maven 仓库中的 `-sources.jar` 解压后按需保留，位于 [`sources/`](sources)（只保留 Skill 相关的类，便于对照行号）。
 >
-> **配套流程图**：[`skill-flow.svg`](skill-flow.svg)（整体链路一张图，用浏览器 / IDEA 直接打开）。
+> **配套流程图**：见附录 A（Mermaid 版）；同内容的高清 SVG 版见 [`skill-flow.svg`](skill-flow.svg)。
 >
 > **分析路径**：本项目 `SkillDemo` 使用的 `ReactAgent + SkillsAgentHook` 路径（另一条 `ChatClient + Advisor` 路径在第 2.3 节对比）。
 
@@ -633,7 +633,7 @@ return skill.loadFullContent();     // 命中扫描阶段缓存的 fullContent
 | `scripts/*.py` | Shell / 代码执行工具 | `ShellToolAgentHook`（`hook/shelltool`） |
 | 外部系统 | MCP 工具 | MCP 集成 |
 
-> 本项目 `SkillDemo` **只挂了 `SkillsAgentHook`**，没有文件/Shell 工具。所以模型即使读完 `pdf/SKILL.md`，也**没有能力**真正生成 PDF 或执行 `scripts/fill_pdf_form_with_annotations.py`。这是 demo 的完整性缺口，不是 Skill 机制本身的缺口。
+> `SkillsAgentHook` 只负责把技能说明送到模型面前（L1/L2），**不提供**文件读写与命令执行能力。若 Agent 没有 L3 工具，模型读完 `pdf/SKILL.md` 也**无法**真正生成 PDF 或执行 `scripts/fill_pdf_form_with_annotations.py`——这是"技能能看懂但干不了活"的典型缺口。本项目已通过 [`SkillToolbox`](src/main/java/edu/whpu/SkillToolbox.java) 补齐，见 7.5。
 
 ### 4.5 L3'：工具按需（本项目增强）
 
@@ -1007,6 +1007,59 @@ ChatClient client = ChatClient.builder(model)
 client.prompt("...").toolCallbacks(List.of(readSkill)).call();   // 手动补工具
 ```
 
+### 7.5 补 L3 执行工具：让 Agent 真正用技能干活（本项目已实现）
+
+**问题**：`SkillsAgentHook` 只负责 L1/L2（提示词索引 + `read_skill`）。`pdf`/`xlsx` 这类技能的产物要靠附件脚本或模型现场写代码，Agent 必须另有"文件 + 命令"工具；否则读完 `SKILL.md` 也只能停在"我知道该怎么做了"，落不了地。
+
+**改动**：新增 [`SkillToolbox.java`](src/main/java/edu/whpu/SkillToolbox.java)，并在 [`SkillDemo.java`](src/main/java/edu/whpu/SkillDemo.java) 里用 `.tools(...)` 挂上。
+
+| 工具 | 作用 |
+|---|---|
+| `run_command(command, workdir)` | `cmd.exe /c`（Windows）或 `sh -c` 执行命令；跑技能脚本、装依赖、校验产物 |
+| `read_file(path)` | 读 `REFERENCE.md` / `FORMS.md` 等文本附件（二进制文件会提示改用 python） |
+| `write_file(path, content)` | 把 SKILL.md 里的示例代码落成 `.py` 再执行；自动建父目录 |
+| `list_dir(path)` | 确认技能目录结构与产物 |
+
+```java
+SkillToolbox toolbox = new SkillToolbox();
+Files.createDirectories(Path.of("output"));
+
+ReactAgent agent = ReactAgent.builder()
+        .name("skills-agent")
+        .model(chatModel)
+        .tools(toolbox.toolCallbacks())      // ← 关键：补上 L3
+        .hooks(List.of(hook))
+        .instruction("先调用 read_skill，再按其中的步骤用工具执行；产物放 output/，结束前校验")
+        .build();
+```
+
+一次典型轨迹（pdf 技能）：
+
+```text
+read_skill(pdf)                                  → 拿到 "Create PDFs 用 reportlab" 的说明
+write_file(output/make_pdf.py, reportlab 脚本)   → 把示例代码落成文件
+run_command("python output/make_pdf.py", ".")    → 执行，产出 output/hello-skill.pdf
+run_command("python -c ...检查文件大小...", ".")  → 自检，失败会重试
+→ 最终回复用户：文件路径 + 校验结果
+```
+
+**只挂工具还不够，还要注意三件事**：
+
+1. **工具描述**要写清"技能脚本怎么跑、产物放哪"，模型才会正确选用（本实现的 description 已包含示例）；
+2. **路径边界**：`read_file` / `write_file` / `list_dir` 通过 `SkillToolbox.resolve()` 限制在项目根内，防 `../` 越界；但 `run_command` 本质是任意代码执行（技能脚本需要它），生产环境必须换容器/沙箱或加命令白名单；
+3. **Python 依赖**：`pdf` 技能用 `reportlab` / `pypdf`，首次运行可能要 `run_command("pip install reportlab pypdf", ".")`。本项目环境未装这两个包，Agent 会在第一次失败后自行安装重试（已允许）。
+
+**框架自带的替代件**（1.1.2.0 的 jar 中已包含，可少写代码）：
+
+| 自带件 | 说明 |
+|---|---|
+| `FileSystemTools` | `read_file` / `write_file` / `edit_file` / `list_files`，`builder().rootDir(...).virtualMode(...)` |
+| `FilesystemInterceptor` | `getTools()` 直接返回文件工具回调，另带路径校验与文件系统 system prompt |
+| `ShellTool2` + `ShellToolAgentHook` | `injectTool()` 注入 shell 工具，带会话、超时、输出行数上限 |
+| `ShellTool` / `GlobSearchTool` / `GrepSearchTool` | 一次性命令、文件搜索 |
+
+取舍：自带件省代码、边界更严；自建件在本 demo 里更直观、行为完全可控（`run_command` 一次一进程，无会话状态）。
+
 ---
 
 ## 8. 调试与验证清单
@@ -1017,7 +1070,7 @@ client.prompt("...").toolCallbacks(List.of(readSkill)).call();   // 手动补工
 | 技能数为 0 | 工作目录是否正确（`Path.of("skills")` 是相对 **进程 cwd**）；`SKILL.md` 是否在**一级子目录**；frontmatter 是否有 name/description |
 | 索引里有但模型不读 | description 是否说清触发条件；是否被截断；模板是否被自定义破坏 |
 | `read_skill` 报 not found | 模型是否传了路径而不是 name（见 6.1） |
-| 读完技能仍然不会做 | 是否缺附件读取/执行工具（L3），demo 只有 read_skill |
+| 读完技能仍然不会做 | 是否缺附件读取/执行工具（L3）；本项目已用 `SkillToolbox` 补齐，见 7.5 |
 | 改了 SKILL.md 不生效 | `autoLoad` 只在构造时扫描；`autoReload` 默认 false；需要手动 `registry.reload()` |
 | 想看真实注入的 prompt | `logging.level.com.alibaba.cloud.ai.graph.agent.interceptor.skills=DEBUG`（`SkillsInterceptor` 会打印 enhanced system message），或在 `interceptModel` 打断点 |
 
@@ -1080,17 +1133,90 @@ jar tf $env:USERPROFILE\.m2\repository\com\alibaba\cloud\ai\spring-ai-alibaba-ag
   Select-String skill
 
 # 2) 解压（本文已解压并裁剪到 sources/）
-# 3) 运行 demo（需要 DASHSCOPE_API_KEY，且工作目录必须是项目根）
+# 3) 运行 demo（需要 JDK 17 + DASHSCOPE_API_KEY，且工作目录必须是项目根）
 mvn -q compile exec:java -Dexec.mainClass=edu.whpu.SkillDemo
 ```
 
 ---
 
-## 附录 A：一图流
+## 附录 A：流程图（Mermaid）
 
-整体流程图见 [`skill-flow.svg`](skill-flow.svg)：包含"① 加载 → ② 装配 → ③ 运行循环 + 渐进式披露三层"。
+### A.1 整体链路：加载 → 装配 → 运行
 
-![Spring AI Alibaba Skill 实现原理总览](skill-flow.svg)
+```mermaid
+flowchart TB
+    classDef load fill:#eaf1ff,stroke:#2f6feb,stroke-width:1px,color:#1e3a8a
+    classDef asm fill:#f3ecff,stroke:#7c3aed,stroke-width:1px,color:#5b21b6
+    classDef run fill:#e6f7f5,stroke:#0f766e,stroke-width:1px,color:#115e59
+    classDef ask fill:#fff7e6,stroke:#d97706,stroke-width:1px,color:#92400e
+    classDef neutral fill:#f1f5f9,stroke:#64748b,stroke-width:1px,color:#334155
+
+    subgraph P1["① 加载：目录 → SkillRegistry（构造时一次）"]
+        direction LR
+        D1["skills/技能名/<br/>SKILL.md（YAML frontmatter + 正文）<br/>可带 REFERENCE.md、scripts/"]:::load
+        S1["SkillScanner.scan(dir, source)<br/>只扫一级子目录<br/>无 SKILL.md 或缺 name/description → 跳过"]:::load
+        F1["frontmatter 解析（SnakeYAML）<br/>name ≤64 · description ≤1024 截断<br/>去掉 frontmatter → fullContent 入内存"]:::load
+        R1["FileSystemSkillRegistry<br/>user: ~/saa/skills · project: ./skills<br/>同名 project 覆盖 user · volatile Map"]:::load
+        D1 --> S1 --> F1 --> R1
+    end
+
+    subgraph P2["② 装配：Hook → 拦截器 + 工具（构建 Agent 时）"]
+        direction LR
+        H1["SkillsAgentHook<br/>@HookPositions(BEFORE_AGENT)"]:::asm
+        H2["getModelInterceptors()<br/>→ SkillsInterceptor（共享 registry）"]:::asm
+        H3["getTools()<br/>→ read_skill ToolCallback"]:::asm
+        W1["ReactAgent 构造<br/>collectAndMergeModelInterceptors()<br/>按 name 去重，Agent 配置优先"]:::asm
+        W2["DefaultBuilder.gatherLocalTools()<br/>hookTools + interceptorTools + regularTools<br/>→ llmNode 与 toolNode"]:::asm
+        W3["initGraph()<br/>before 节点即 entry<br/>START → hook.before → model"]:::asm
+        H1 --> H2 --> W1
+        H1 --> H3 --> W2
+        W1 --> W3
+        W2 --> W3
+    end
+
+    subgraph P3["③ 运行：一次 call() 的 ReAct 循环"]
+        direction TB
+        E1["agent.call(任务) → START"]:::run
+        E2["SkillsAgentHook.beforeAgent()<br/>autoReload 时 registry.reload()<br/>返回空 Map，不改 state"]:::run
+        M1["AgentLlmNode.apply()<br/>构造 ModelRequest"]:::run
+        M2["SkillsInterceptor.interceptModel()<br/>① 只渲染 name + description + path<br/>② 追加到 system message<br/>③ 历史里有 read_skill(name) → 动态工具"]:::ask
+        M3["ChatClient → LLM<br/>system + 历史 + 工具 schema"]:::run
+        Q{"有 tool_calls？"}
+        T1["AgentToolNode.resolve()<br/>静态 → config 动态 → resolver"]:::run
+        T2["ReadSkillTool.apply()<br/>readSkillContent → loadFullContent<br/>命中扫描期缓存"]:::run
+        T3["ToolResponseMessage 追加进 messages<br/>AppendStrategy"]:::run
+        END1["END / 返回最后消息"]:::neutral
+        E1 --> E2 --> M1 --> M2 --> M3 --> Q
+        Q -->|"否"| END1
+        Q -->|"是（read_skill / 其它工具）"| T1
+        T1 --> T2
+        T2 --> T3
+        T3 -->|"下一轮 model：全文已在上下文"| M1
+    end
+
+    R1 --> H1
+    W3 --> E1
+```
+
+### A.2 渐进式披露：三层 + 一层可选
+
+```mermaid
+flowchart LR
+    classDef l1 fill:#eaf1ff,stroke:#2f6feb,color:#1e3a8a
+    classDef l2 fill:#fff7e6,stroke:#d97706,color:#92400e
+    classDef l3 fill:#e6f7f5,stroke:#0f766e,color:#115e59
+    classDef l3p fill:#f3ecff,stroke:#7c3aed,color:#5b21b6
+
+    L1["L1 · 索引（常驻 system prompt）<br/>name + description + path<br/>≈ 4.2k 字符 / 约 1k tokens"]:::l1
+    L2["L2 · 正文（按需 read_skill）<br/>SKILL.md 去掉 frontmatter<br/>pdf 7.5k · xlsx 8.7k 字符"]:::l2
+    L3["L3 · 附件（按需，其它工具）<br/>REFERENCE.md、FORMS.md、scripts/<br/>框架只给 skillPath，不注入内容"]:::l3
+    L3P["L3' · 工具（可选 groupedTools）<br/>历史出现 read_skill(name) 后才注入"]:::l3p
+    L1 -->|"description 命中任务"| L2
+    L2 -->|"需要脚本 / 参考资料"| L3
+    L2 -->|"该技能配置了专属工具"| L3P
+```
+
+> 同内容的高清 SVG 版：[`skill-flow.svg`](skill-flow.svg)（适合放进 PPT / 设计稿）。
 
 ## 附录 B：版本与差异提示
 
