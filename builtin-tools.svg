@@ -1,0 +1,238 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1520" height="1880" viewBox="0 0 1520 1880" font-family="'Microsoft YaHei UI','Microsoft YaHei','PingFang SC','Hiragino Sans GB','Noto Sans SC','SimHei',sans-serif">
+  <title>Spring AI Alibaba 内置工具总览</title>
+  <desc>spring-ai-alibaba-agent-framework 1.1.2.0 内置工具（文件、搜索、Shell、Todo、多智能体、Skill）及装配方式</desc>
+
+  <rect x="0" y="0" width="1520" height="1880" fill="#f7f9fc"/>
+
+  <!-- ===================== 标题 ===================== -->
+  <text x="60" y="48" font-size="27" font-weight="700" fill="#0f172a">Spring AI Alibaba Agent Framework 内置工具总览</text>
+  <text x="60" y="76" font-size="12.5" fill="#475569">spring-ai-alibaba-agent-framework 1.1.2.0　｜　工具全部是普通 ToolCallback，默认不注册，必须显式挂载到 ReactAgent</text>
+  <text x="1460" y="48" font-size="11" fill="#64748b" text-anchor="end">整理依据：本地 jar（javap + sources）</text>
+  <text x="1460" y="72" font-size="11" fill="#64748b" text-anchor="end">蓝=文件　青=搜索　紫=Shell　橙=Todo　红=多智能体　绿=Skill</text>
+
+  <!-- ===================== 装配入口 ===================== -->
+  <rect x="40" y="100" width="1440" height="172" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+  <rect x="56" y="112" width="330" height="30" rx="15" fill="#2f6feb"/>
+  <text x="72" y="132" font-size="14" font-weight="700" fill="#ffffff">装配入口：ReactAgent.Builder</text>
+
+  <g>
+    <rect x="80" y="152" width="430" height="100" rx="10" fill="#eaf1ff" stroke="#2f6feb" stroke-width="1.2"/>
+    <text x="96" y="178" font-size="13" font-weight="700" fill="#1e3a8a" font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace">.tools(ToolCallback...)</text>
+    <text x="96" y="199" font-size="11.5" fill="#1f2937">传现成 ToolCallback，单个或多个 / List 均可</text>
+    <text x="96" y="218" font-size="11.5" fill="#1f2937">搜索 · Shell · todo · task 这类工厂产出的工具</text>
+    <text x="96" y="237" font-size="11.5" fill="#1f2937">适合框架已经封装好的 FunctionToolCallback</text>
+  </g>
+
+  <g>
+    <rect x="530" y="152" width="430" height="100" rx="10" fill="#eaf1ff" stroke="#2f6feb" stroke-width="1.2"/>
+    <text x="546" y="178" font-size="13" font-weight="700" fill="#1e3a8a" font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace">.methodTools(Object...)</text>
+    <text x="546" y="199" font-size="11.5" fill="#1f2937">传带 @Tool 方法的对象，一个对象可含多个工具</text>
+    <text x="546" y="218" font-size="11.5" fill="#1f2937">FileSystemTools · ShellTool2 · 自定义 WeatherTool</text>
+    <text x="546" y="237" font-size="11.5" fill="#1f2937">内部转成 MethodToolCallback，方法参数即 schema</text>
+  </g>
+
+  <g>
+    <rect x="980" y="152" width="500" height="100" rx="10" fill="#eaf1ff" stroke="#2f6feb" stroke-width="1.2"/>
+    <text x="996" y="178" font-size="13" font-weight="700" fill="#1e3a8a" font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace">.interceptors(...) / .hooks(...)</text>
+    <text x="996" y="199" font-size="11.5" fill="#1f2937">拦截器 / Hook 自带 getTools()，由 DefaultBuilder 汇总</text>
+    <text x="996" y="218" font-size="11.5" fill="#1f2937">Filesystem · TodoList · SubAgent · Skills · ShellTool</text>
+    <text x="996" y="237" font-size="11.5" fill="#1f2937">推荐：工具与配套提示词 / 生命周期一起装配</text>
+  </g>
+
+  <text x="80" y="264" font-size="10.5" fill="#475569">三种入口最终汇总成同一份 allTools：既进 AgentLlmNode 的 ChatOptions（模型可见），也进 AgentToolNode（执行侧）——所以不要在多个入口重复挂同名工具。</text>
+
+  <!-- ===================== ① 文件系统 ===================== -->
+  <g>
+    <rect x="40" y="292" width="700" height="240" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+    <rect x="56" y="306" width="240" height="28" rx="14" fill="#2f6feb"/>
+    <text x="72" y="325" font-size="13" font-weight="700" fill="#ffffff">① 文件系统 Filesystem</text>
+    <text x="724" y="325" font-size="10.5" fill="#64748b" text-anchor="end">挂载：.methodTools() / .interceptors()</text>
+
+    <text x="60" y="354" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#1e3a8a">FileSystemTools</tspan>（@Tool 方法式）→ 走 methodTools 挂载</text>
+    <text x="60" y="376" font-size="11.5" fill="#1f2937">工具名：read_file · write_file · edit_file · list_files</text>
+    <text x="60" y="398" font-size="11.5" fill="#1f2937">builder：rootDir(workspace) · virtualMode(锁根目录) · maxFileSizeMb</text>
+    <text x="60" y="420" font-size="11.5" fill="#1f2937">单文件工厂：ReadFileTool / WriteFileTool / EditFileTool / ListFilesTool</text>
+    <text x="60" y="442" font-size="11.5" fill="#1f2937">每个都提供 createXxxToolCallback(description)，可单独挂</text>
+    <text x="60" y="464" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#1e3a8a">FilesystemInterceptor</tspan>（interceptors）：ls / read_file / write_file / edit_file / glob / grep</text>
+    <text x="60" y="486" font-size="11.5" fill="#1f2937">readOnly(true) 去掉写工具；与 FileSystemTools 二选一，别同时挂</text>
+    <text x="60" y="508" font-size="11.5" fill="#b45309">⚠ Windows：提示词写「/ 开头」，工具却按真实绝对路径解析，记得实测或改 systemPrompt</text>
+  </g>
+
+  <!-- ===================== ② 搜索 ===================== -->
+  <g>
+    <rect x="780" y="292" width="700" height="240" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+    <rect x="796" y="306" width="180" height="28" rx="14" fill="#0f766e"/>
+    <text x="812" y="325" font-size="13" font-weight="700" fill="#ffffff">② 搜索 Search</text>
+    <text x="1464" y="325" font-size="10.5" fill="#64748b" text-anchor="end">挂载：.tools()</text>
+
+    <text x="800" y="354" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#115e59">GlobSearchTool</tspan>.builder(root).build() → 工具名 <tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#115e59">glob_search</tspan></text>
+    <text x="800" y="376" font-size="11.5" fill="#1f2937">按 glob 匹配文件（**/*.java），结果按修改时间排序</text>
+    <text x="800" y="398" font-size="11.5" fill="#1f2937">请求参数：pattern（必填）· path（默认 "/"）</text>
+    <text x="800" y="420" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#115e59">GrepSearchTool</tspan>.builder(root).build() → 工具名 <tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#115e59">grep_search</tspan></text>
+    <text x="800" y="442" font-size="11.5" fill="#1f2937">正则搜索内容；include 过滤 + 输出模式（content / count / files）</text>
+    <text x="800" y="464" font-size="11.5" fill="#1f2937">默认先试系统 ripgrep，失败或不存在 → 回退纯 Java 实现</text>
+    <text x="800" y="486" font-size="11.5" fill="#1f2937">可调：withUseRipgrep(false) · withMaxFileSizeMb(10) · withName(...)</text>
+    <text x="800" y="508" font-size="11.5" fill="#b45309">⚠ root 即虚拟根，模型只应传 "/" 或 "/src" 这类路径，传真实盘符会找不到</text>
+  </g>
+
+  <!-- ===================== ③ Shell ===================== -->
+  <g>
+    <rect x="40" y="552" width="700" height="240" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+    <rect x="56" y="566" width="240" height="28" rx="14" fill="#7c3aed"/>
+    <text x="72" y="585" font-size="13" font-weight="700" fill="#ffffff">③ Shell / 代码执行</text>
+    <text x="724" y="585" font-size="10.5" fill="#64748b" text-anchor="end">挂载：.hooks()（推荐）</text>
+
+    <text x="60" y="614" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#4c1d95">ShellTool2</tspan>（@Tool）→ 工具名 <tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#4c1d95">shell</tspan></text>
+    <text x="60" y="636" font-size="11.5" fill="#1f2937">builder：workspaceRoot · startup/shutdownCommands · timeout · maxOutputLines</text>
+    <text x="60" y="658" font-size="11.5" fill="#1f2937">持久会话；参数 command + restart；默认超时 60s、输出 1000 行</text>
+    <text x="60" y="680" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#4c1d95">ShellToolAgentHook</tspan>：beforeAgent initialize / afterAgent cleanup</text>
+    <text x="60" y="702" font-size="11.5" fill="#1f2937">hook.getTools() 自动挂 shell；会话存于 RunnableConfig.context</text>
+    <text x="60" y="724" font-size="11.5" fill="#1f2937">ShellTool（FunctionToolCallback 版）需自行 initialize，否则报未初始化</text>
+    <text x="60" y="746" font-size="11.5" fill="#b45309">⚠ 无沙箱：命令权限等同应用进程，只给受控 workspace 并加超时 / 调用上限</text>
+  </g>
+
+  <!-- ===================== ④ Todo ===================== -->
+  <g>
+    <rect x="780" y="552" width="700" height="240" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+    <rect x="796" y="566" width="180" height="28" rx="14" fill="#c2410c"/>
+    <text x="812" y="585" font-size="13" font-weight="700" fill="#ffffff">④ 待办 Todo</text>
+    <text x="1464" y="585" font-size="10.5" fill="#64748b" text-anchor="end">挂载：.interceptors() / .tools()</text>
+
+    <text x="800" y="614" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#7c2d12">WriteTodosTool</tspan>.builder().build() → 工具名 <tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#7c2d12">write_todos</tspan></text>
+    <text x="800" y="636" font-size="11.5" fill="#1f2937">维护 todo 列表：pending / in_progress / completed</text>
+    <text x="800" y="658" font-size="11.5" fill="#1f2937">数据写入 Agent state（ToolContext 注入），不落外部存储</text>
+    <text x="800" y="680" font-size="11.5" fill="#1f2937">脱离 ReactAgent 直接调用 → "Tool context is not available"</text>
+    <text x="800" y="702" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#7c2d12">TodoListInterceptor</tspan>（interceptors）：自动注册 + 注入使用规范</text>
+    <text x="800" y="724" font-size="11.5" fill="#1f2937">适合 ≥3 步复杂任务；简单任务由提示词引导跳过</text>
+    <text x="800" y="746" font-size="11.5" fill="#1f2937">可与 ToolCallLimitHook 组合，防止反复刷新 todo 列表</text>
+  </g>
+
+  <!-- ===================== ⑤ 多智能体 ===================== -->
+  <g>
+    <rect x="40" y="812" width="700" height="240" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+    <rect x="56" y="826" width="250" height="28" rx="14" fill="#be123c"/>
+    <text x="72" y="845" font-size="13" font-weight="700" fill="#ffffff">⑤ 多智能体 / 子代理</text>
+    <text x="724" y="845" font-size="10.5" fill="#64748b" text-anchor="end">挂载：.tools() / .interceptors()</text>
+
+    <text x="60" y="874" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#881337">TaskTool</tspan>.createTaskToolCallback(subAgents, desc) → 工具名 <tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#881337">task</tspan></text>
+    <text x="60" y="896" font-size="11.5" fill="#1f2937">参数：description（任务说明）+ subagent_type（子代理名）</text>
+    <text x="60" y="918" font-size="11.5" fill="#1f2937">子代理 = 独立 ReactAgent，上下文隔离，只回传最终文本</text>
+    <text x="60" y="940" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#881337">SubAgentInterceptor</tspan>（interceptors）：自动挂 task + 自带 general-purpose</text>
+    <text x="60" y="962" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#881337">SubAgentSpec</tspan> 自定义：name / description / systemPrompt / model / tools</text>
+    <text x="60" y="984" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#881337">AgentTool</tspan>.create(reactAgent)：任意 Agent 包成同名工具，schema 取 inputType</text>
+    <text x="60" y="1006" font-size="11.5" fill="#1f2937">适合可并行拆分的独立子任务；强依赖链的任务别拆（拆了反而更慢）</text>
+  </g>
+
+  <!-- ===================== ⑥ Skill ===================== -->
+  <g>
+    <rect x="780" y="812" width="700" height="240" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+    <rect x="796" y="826" width="180" height="28" rx="14" fill="#16a34a"/>
+    <text x="812" y="845" font-size="13" font-weight="700" fill="#ffffff">⑥ Skill 技能</text>
+    <text x="1464" y="845" font-size="10.5" fill="#64748b" text-anchor="end">挂载：.hooks()</text>
+
+    <text x="800" y="874" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#14532d">SkillsAgentHook</tspan>（hooks）→ 自动注册 <tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#14532d">read_skill</tspan></text>
+    <text x="800" y="896" font-size="11.5" fill="#1f2937">getTools() 无条件返回 read_skill；不挂 hook 就没有技能能力</text>
+    <text x="800" y="918" font-size="11.5" fill="#1f2937">参数是 skill_name（不是 path），返回 SKILL.md 正文</text>
+    <text x="800" y="940" font-size="11.5" fill="#1f2937">groupedTools：读到某技能后，动态注入该技能的专属工具</text>
+    <text x="800" y="962" font-size="11.5" fill="#1f2937">ChatClient + SpringAiSkillAdvisor 路径需手动注册 read_skill</text>
+    <text x="800" y="984" font-size="11.5" fill="#1f2937">技能目录 = skills/&lt;name&gt;/SKILL.md；附件由文件 / Shell 工具读取</text>
+    <text x="800" y="1006" font-size="11.5" fill="#1f2937">细节见 skill-flow.svg 与《SpringAIAlibaba-Skill 实现原理》</text>
+  </g>
+
+  <!-- ===================== 工具治理 ===================== -->
+  <rect x="40" y="1072" width="1440" height="150" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+  <rect x="56" y="1084" width="330" height="28" rx="14" fill="#475569"/>
+  <text x="72" y="1103" font-size="13" font-weight="700" fill="#ffffff">工具治理与扩展（不是工具本身）</text>
+  <text x="1464" y="1103" font-size="10.5" fill="#64748b" text-anchor="end">与内置工具常配套使用，用来控成本、控风险</text>
+
+  <g>
+    <rect x="56" y="1120" width="224" height="88" rx="9" fill="#eef2f7" stroke="#cbd5e1"/>
+    <text x="68" y="1142" font-size="11" font-weight="700" fill="#1e293b" font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace">ToolRetryInterceptor</text>
+    <text x="68" y="1161" font-size="10.5" fill="#334155">工具失败自动重试</text>
+    <text x="68" y="1179" font-size="10.5" fill="#334155">可设次数与失败后行为</text>
+  </g>
+  <g>
+    <rect x="296" y="1120" width="224" height="88" rx="9" fill="#eef2f7" stroke="#cbd5e1"/>
+    <text x="308" y="1142" font-size="11" font-weight="700" fill="#1e293b" font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace">ToolErrorInterceptor</text>
+    <text x="308" y="1161" font-size="10.5" fill="#334155">异常转成 Tool 消息</text>
+    <text x="308" y="1179" font-size="10.5" fill="#334155">工具循环不中断</text>
+  </g>
+  <g>
+    <rect x="536" y="1120" width="224" height="88" rx="9" fill="#eef2f7" stroke="#cbd5e1"/>
+    <text x="548" y="1142" font-size="11" font-weight="700" fill="#1e293b" font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace">ToolSelectionInterceptor</text>
+    <text x="548" y="1161" font-size="10.5" fill="#334155">每次请求动态筛选工具</text>
+    <text x="548" y="1179" font-size="10.5" fill="#334155">减少常驻 schema 数量</text>
+  </g>
+  <g>
+    <rect x="776" y="1120" width="224" height="88" rx="9" fill="#eef2f7" stroke="#cbd5e1"/>
+    <text x="788" y="1142" font-size="11" font-weight="700" fill="#1e293b" font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace">ToolEmulatorInterceptor</text>
+    <text x="788" y="1161" font-size="10.5" fill="#334155">用模拟实现替代真实工具</text>
+    <text x="788" y="1179" font-size="10.5" fill="#334155">适合演示 / 离线测试</text>
+  </g>
+  <g>
+    <rect x="1016" y="1120" width="224" height="88" rx="9" fill="#eef2f7" stroke="#cbd5e1"/>
+    <text x="1028" y="1142" font-size="11" font-weight="700" fill="#1e293b" font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace">ToolCallLimitHook</text>
+    <text x="1028" y="1161" font-size="10.5" fill="#334155">限制工具调用次数</text>
+    <text x="1028" y="1179" font-size="10.5" fill="#334155">超限退出或报错</text>
+  </g>
+  <g>
+    <rect x="1256" y="1120" width="224" height="88" rx="9" fill="#eef2f7" stroke="#cbd5e1"/>
+    <text x="1268" y="1142" font-size="11" font-weight="700" fill="#1e293b" font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace">LargeResultEvictionInterceptor</text>
+    <text x="1268" y="1161" font-size="10.5" fill="#334155">大结果落盘成文件</text>
+    <text x="1268" y="1179" font-size="10.5" fill="#334155">配合文件工具按需读取</text>
+  </g>
+
+  <!-- ===================== 模型侧内置能力 ===================== -->
+  <g>
+    <rect x="40" y="1242" width="700" height="200" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+    <rect x="56" y="1256" width="330" height="28" rx="14" fill="#0891b2"/>
+    <text x="72" y="1275" font-size="13" font-weight="700" fill="#ffffff">模型侧内置能力（不是 ToolCallback）</text>
+
+    <text x="60" y="1304" font-size="11.5" fill="#1f2937"><tspan font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-weight="700" fill="#155e75">DashScopeChatOptions</tspan>.builder().enableSearch(true)</text>
+    <text x="60" y="1326" font-size="11.5" fill="#1f2937">Qwen 服务端联网搜索：true 启用 / false 关闭（默认）</text>
+    <text x="60" y="1348" font-size="11.5" fill="#1f2937">searchOptions(...)：forcedSearch / searchStrategy / enableCitation 等</text>
+    <text x="60" y="1370" font-size="11.5" fill="#1f2937">服务端执行，不产生本地工具调用，也不进 Agent 工具循环</text>
+    <text x="60" y="1392" font-size="11.5" fill="#1f2937">代码解释器等同类能力也在服务端，不是框架内置工具</text>
+    <text x="60" y="1414" font-size="11.5" fill="#64748b">与 MCP 工具是两套机制：一个在模型侧，一个在 Agent 侧</text>
+  </g>
+
+  <!-- ===================== 注意事项 ===================== -->
+  <g>
+    <rect x="780" y="1242" width="700" height="200" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+    <rect x="796" y="1256" width="200" height="28" rx="14" fill="#b45309"/>
+    <text x="812" y="1275" font-size="13" font-weight="700" fill="#ffffff">使用注意（务必看）</text>
+
+    <text x="800" y="1304" font-size="11.5" fill="#1f2937">① 默认不启用：无 starter、无自动扫描，必须显式 .tools / .methodTools / .hooks</text>
+    <text x="800" y="1326" font-size="11.5" fill="#1f2937">② extension 包是实验性 API，升级时留意类名与签名变化</text>
+    <text x="800" y="1348" font-size="11.5" fill="#1f2937">③ 语义重复别双挂：glob vs glob_search、FileSystemTools vs FilesystemInterceptor</text>
+    <text x="800" y="1370" font-size="11.5" fill="#1f2937">④ 工具 schema 常驻上下文，工具越多每轮 token 成本越高</text>
+    <text x="800" y="1392" font-size="11.5" fill="#b45309">⑤ 安全：Shell 无沙箱、文件工具可越界 → virtualMode + readOnly + 审批</text>
+    <text x="800" y="1414" font-size="11.5" fill="#64748b">⑥ Windows："/" 风格提示词与真实路径存在偏差，务必实测</text>
+  </g>
+
+  <!-- ===================== 代码示例 ===================== -->
+  <rect x="40" y="1466" width="1440" height="360" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+  <rect x="56" y="1480" width="300" height="28" rx="14" fill="#0f172a"/>
+  <text x="72" y="1499" font-size="13" font-weight="700" fill="#ffffff">最小装配示例（可直接改到 SkillDemo）</text>
+  <rect x="56" y="1514" width="1424" height="300" rx="8" fill="#0f172a"/>
+
+  <g font-family="'Consolas','Cascadia Mono','JetBrains Mono','Courier New',monospace" font-size="12.5" fill="#e2e8f0">
+    <text x="76" y="1544"><tspan fill="#94a3b8">// 文件 + 搜索 + todo + shell 全部为内置工具，显式挂载</tspan></text>
+    <text x="76" y="1564">String ws = Path.of("").toAbsolutePath().toString();</text>
+    <text x="76" y="1584">ShellTool2 shell = ShellTool2.builder(ws).withCommandTimeout(30_000).build();</text>
+    <text x="76" y="1604"> </text>
+    <text x="76" y="1624">ReactAgent agent = ReactAgent.builder()</text>
+    <text x="76" y="1644">        .name("tools-agent")</text>
+    <text x="76" y="1664">        .model(chatModel)</text>
+    <text x="76" y="1684">        .methodTools(FileSystemTools.builder().rootDir(ws).virtualMode(true).build())</text>
+    <text x="76" y="1704">        .tools(GlobSearchTool.builder(ws).build(),</text>
+    <text x="76" y="1724">               GrepSearchTool.builder(ws).build())</text>
+    <text x="76" y="1744">        .interceptors(TodoListInterceptor.builder().build())</text>
+    <text x="76" y="1764">        .hooks(List.of(ShellToolAgentHook.builder().shellTool2(shell).shellToolName("shell").build()))</text>
+    <text x="76" y="1784">        .saver(new MemorySaver())</text>
+    <text x="76" y="1804">        .build();</text>
+  </g>
+
+  <text x="60" y="1850" font-size="10.5" fill="#64748b">依据 spring-ai-alibaba-agent-framework 1.1.2.0 的 jar（javap + sources）整理　｜　内置工具默认不启用，extension 为实验性 API　｜　Skill 链路详见 skill-flow.svg</text>
+  <text x="1460" y="1850" font-size="10.5" fill="#64748b" text-anchor="end">共 6 类 20+ 个工具类</text>
+</svg>

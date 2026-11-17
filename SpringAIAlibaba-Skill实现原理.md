@@ -633,7 +633,7 @@ return skill.loadFullContent();     // 命中扫描阶段缓存的 fullContent
 | `scripts/*.py` | Shell / 代码执行工具 | `ShellToolAgentHook`（`hook/shelltool`） |
 | 外部系统 | MCP 工具 | MCP 集成 |
 
-> `SkillsAgentHook` 只负责把技能说明送到模型面前（L1/L2），**不提供**文件读写与命令执行能力。若 Agent 没有 L3 工具，模型读完 `pdf/SKILL.md` 也**无法**真正生成 PDF 或执行 `scripts/fill_pdf_form_with_annotations.py`——这是"技能能看懂但干不了活"的典型缺口。本项目已通过 [`SkillToolbox`](src/main/java/edu/whpu/SkillToolbox.java) 补齐，见 7.5。
+> `SkillsAgentHook` 只负责把技能说明送到模型面前（L1/L2），**不提供**文件读写与命令执行能力。若 Agent 没有 L3 工具，模型读完 `pdf/SKILL.md` 也**无法**真正生成 PDF 或执行 `scripts/fill_pdf_form_with_annotations.py`——这是"技能能看懂但干不了活"的典型缺口。本项目已用内置 `FileSystemTools` + `ShellTool2`/`ShellToolAgentHook` 补齐，见 7.5。
 
 ### 4.5 L3'：工具按需（本项目增强）
 
@@ -1007,29 +1007,47 @@ ChatClient client = ChatClient.builder(model)
 client.prompt("...").toolCallbacks(List.of(readSkill)).call();   // 手动补工具
 ```
 
-### 7.5 补 L3 执行工具：让 Agent 真正用技能干活（本项目已实现）
+### 7.5 补 L3 执行工具：用框架内置件（本项目已实现）
 
 **问题**：`SkillsAgentHook` 只负责 L1/L2（提示词索引 + `read_skill`）。`pdf`/`xlsx` 这类技能的产物要靠附件脚本或模型现场写代码，Agent 必须另有"文件 + 命令"工具；否则读完 `SKILL.md` 也只能停在"我知道该怎么做了"，落不了地。
 
-**改动**：新增 [`SkillToolbox.java`](src/main/java/edu/whpu/SkillToolbox.java)，并在 [`SkillDemo.java`](src/main/java/edu/whpu/SkillDemo.java) 里用 `.tools(...)` 挂上。
+本项目不再自建工具，直接用 1.1.2.0 自带的两套（[`SkillDemo.java`](src/main/java/edu/whpu/SkillDemo.java)）：
 
-| 工具 | 作用 |
-|---|---|
-| `run_command(command, workdir)` | `cmd.exe /c`（Windows）或 `sh -c` 执行命令；跑技能脚本、装依赖、校验产物 |
-| `read_file(path)` | 读 `REFERENCE.md` / `FORMS.md` 等文本附件（二进制文件会提示改用 python） |
-| `write_file(path, content)` | 把 SKILL.md 里的示例代码落成 `.py` 再执行；自动建父目录 |
-| `list_dir(path)` | 确认技能目录结构与产物 |
+| 能力 | 内置件 | 暴露给模型的工具名 |
+|---|---|---|
+| 文件读写 / 编辑 / 列目录 | `FileSystemTools` | `read_file` / `write_file` / `edit_file` / `list_files` |
+| 命令执行（持久会话） | `ShellTool2` + `ShellToolAgentHook` | `shell`（入参 `command`、`restart`） |
 
 ```java
-SkillToolbox toolbox = new SkillToolbox();
-Files.createDirectories(Path.of("output"));
+String projectRoot = Path.of("").toAbsolutePath().normalize().toString();
+
+// 1) 文件工具：ToolCallbacks.from(...) 把 @Tool 方法转成回调
+FileSystemTools fileTools = FileSystemTools.builder()
+        .rootDir(projectRoot)
+        .maxFileSizeMb(10)
+        .build();
+ToolCallback[] fileCallbacks = ToolCallbacks.from(fileTools);
+
+// 2) Shell：由 ShellToolAgentHook 在 beforeAgent 时初始化会话
+List<String> shellCommand = System.getProperty("os.name", "").toLowerCase().contains("win")
+        ? List.of("cmd.exe") : List.of("/bin/sh");
+ShellTool2 shellTool = ShellTool2.builder(projectRoot)
+        .withShellCommand(shellCommand)
+        .withCommandTimeout(120_000)   // 毫秒！
+        .withMaxOutputLines(500)
+        .build();
+ShellToolAgentHook shellHook = ShellToolAgentHook.builder()
+        .shellTool2(shellTool)
+        .build();
 
 ReactAgent agent = ReactAgent.builder()
         .name("skills-agent")
         .model(chatModel)
-        .tools(toolbox.toolCallbacks())      // ← 关键：补上 L3
-        .hooks(List.of(hook))
-        .instruction("先调用 read_skill，再按其中的步骤用工具执行；产物放 output/，结束前校验")
+        .tools(fileCallbacks)                   // 文件工具
+        .saver(new MemorySaver())
+        .hooks(List.of(skillsHook, shellHook))  // shell 工具由 hook 注入
+        .instruction("先 read_skill，再用 read_file/write_file/edit_file/list_files 与 shell 执行；"
+                + "文件用绝对路径，产物放 " + projectRoot + "/output")
         .build();
 ```
 
@@ -1037,28 +1055,29 @@ ReactAgent agent = ReactAgent.builder()
 
 ```text
 read_skill(pdf)                                  → 拿到 "Create PDFs 用 reportlab" 的说明
-write_file(output/make_pdf.py, reportlab 脚本)   → 把示例代码落成文件
-run_command("python output/make_pdf.py", ".")    → 执行，产出 output/hello-skill.pdf
-run_command("python -c ...检查文件大小...", ".")  → 自检，失败会重试
+write_file(<root>/output/make_pdf.py, 脚本)      → 把示例代码落成文件（路径必须是绝对路径）
+shell("python output/make_pdf.py")               → 执行，产出 output/hello-skill.pdf
+shell("python -c ...检查文件大小...")             → 自检，失败会重试
 → 最终回复用户：文件路径 + 校验结果
 ```
 
-**只挂工具还不够，还要注意三件事**：
+**内置件的行为细节（实测记录，容易踩）**：
 
-1. **工具描述**要写清"技能脚本怎么跑、产物放哪"，模型才会正确选用（本实现的 description 已包含示例）；
-2. **路径边界**：`read_file` / `write_file` / `list_dir` 通过 `SkillToolbox.resolve()` 限制在项目根内，防 `../` 越界；但 `run_command` 本质是任意代码执行（技能脚本需要它），生产环境必须换容器/沙箱或加命令白名单；
-3. **Python 依赖**：`pdf` 技能用 `reportlab` / `pypdf`，首次运行可能要 `run_command("pip install reportlab pypdf", ".")`。本项目环境未装这两个包，Agent 会在第一次失败后自行安装重试（已允许）。
+1. `FileSystemTools` 的 schema 正常生成 4 个工具（`filePath` / `offset` / `limit` / `oldString` 等参数名都在），`read_file` 返回 `cat -n` 行号格式；
+2. **`write_file` 不覆盖已存在文件**：返回 `Error: ... already exists. Read and then make an edit...`；改文件要用 `edit_file`（同样要求先 `read_file`）；
+3. **文件路径必须是绝对路径**（工具描述明确要求），相对路径可能被拒绝；
+4. `ShellTool2` 是**持久会话**：必须先 `initialize(config)`——由 `ShellToolAgentHook.beforeAgent` 完成；只把 shell 当普通工具挂上、不挂 hook，会报 `Shell session not initialized`；
+5. **`withCommandTimeout` 单位是毫秒**（实测传 `10` 会立刻超时；`60000` 正常）；
+6. **Windows 默认 shell 是 PowerShell，实测拿不到结束 marker 会超时**；显式 `.withShellCommand(List.of("cmd.exe"))` 后 `echo` 正常返回。Linux/macOS 用 `/bin/sh`；
+7. shell 的工具名固定是 `shell`（`@Tool(name = "shell")`），不是 `run_command`；提示词里要按这个名字引导。
 
-**框架自带的替代件**（1.1.2.0 的 jar 中已包含，可少写代码）：
+另一条等价路径：`FilesystemInterceptor`（`ModelInterceptor`，`getTools()` 直接返回文件工具回调，并注入文件系统 system prompt）可以替代 `ToolCallbacks.from(fileTools)`。
 
-| 自带件 | 说明 |
-|---|---|
-| `FileSystemTools` | `read_file` / `write_file` / `edit_file` / `list_files`，`builder().rootDir(...).virtualMode(...)` |
-| `FilesystemInterceptor` | `getTools()` 直接返回文件工具回调，另带路径校验与文件系统 system prompt |
-| `ShellTool2` + `ShellToolAgentHook` | `injectTool()` 注入 shell 工具，带会话、超时、输出行数上限 |
-| `ShellTool` / `GlobSearchTool` / `GrepSearchTool` | 一次性命令、文件搜索 |
+**仍然要注意**：
 
-取舍：自带件省代码、边界更严；自建件在本 demo 里更直观、行为完全可控（`run_command` 一次一进程，无会话状态）。
+1. 这些工具只是"能力"，模型是否会用取决于 `instruction` 与技能描述；本项目在 instruction 里明确点名了工具与 `output/` 目录；
+2. **安全**：`shell` 等价于任意代码执行（技能脚本需要它），生产环境必须换容器/沙箱或命令白名单；
+3. **Python 依赖**：`pdf` 技能用 `reportlab` / `pypdf`，首次运行可能要 `shell("pip install reportlab pypdf")`。本机未装这两个包，Agent 首轮失败后会自行安装重试（需网络）。
 
 ---
 
@@ -1070,7 +1089,7 @@ run_command("python -c ...检查文件大小...", ".")  → 自检，失败会�
 | 技能数为 0 | 工作目录是否正确（`Path.of("skills")` 是相对 **进程 cwd**）；`SKILL.md` 是否在**一级子目录**；frontmatter 是否有 name/description |
 | 索引里有但模型不读 | description 是否说清触发条件；是否被截断；模板是否被自定义破坏 |
 | `read_skill` 报 not found | 模型是否传了路径而不是 name（见 6.1） |
-| 读完技能仍然不会做 | 是否缺附件读取/执行工具（L3）；本项目已用 `SkillToolbox` 补齐，见 7.5 |
+| 读完技能仍然不会做 | 是否缺附件读取/执行工具（L3）；本项目已用内置 `FileSystemTools` + `ShellTool2` 补齐，见 7.5 |
 | 改了 SKILL.md 不生效 | `autoLoad` 只在构造时扫描；`autoReload` 默认 false；需要手动 `registry.reload()` |
 | 想看真实注入的 prompt | `logging.level.com.alibaba.cloud.ai.graph.agent.interceptor.skills=DEBUG`（`SkillsInterceptor` 会打印 enhanced system message），或在 `interceptModel` 打断点 |
 

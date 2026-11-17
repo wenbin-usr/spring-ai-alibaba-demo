@@ -245,8 +245,8 @@
     <text x="1032" y="1214" font-size="11.5" fill="#1f2937">REFERENCE.md / FORMS.md / scripts/*.py</text>
     <text x="1032" y="1234" font-size="11.5" fill="#1f2937">框架只给 skillPath，不注入附件内容</text>
     <text x="1032" y="1254" font-size="11.5" fill="#1f2937">由 shell / filesystem / MCP 工具按绝对路径操作</text>
-    <text x="1032" y="1274" font-size="11.5" fill="#1f2937">本项目已补 SkillToolbox：run_command + read_file</text>
-    <text x="1032" y="1294" font-size="11.5" fill="#1f2937">+ write_file + list_dir → 可真正落地产物</text>
+    <text x="1032" y="1274" font-size="11.5" fill="#1f2937">内置工具：FileSystemTools 的 read/write/edit/list</text>
+    <text x="1032" y="1294" font-size="11.5" fill="#1f2937">+ ShellToolAgentHook 的 shell → 可真正落地产物</text>
   </g>
 
   <g>
